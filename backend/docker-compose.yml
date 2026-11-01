@@ -1,0 +1,39 @@
+services:
+  api:
+    build: .
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: mongodb://mongo:27017/home_server_mono
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+      CORS_ORIGINS: http://localhost:3000
+      MINECRAFT_CONTAINER_NAME: minecraft-server
+      MINECRAFT_DATA_DIR: /srv/minecraft
+      MINECRAFT_RCON_PORT: 25575
+      MINECRAFT_RCON_HOST: 127.0.0.1
+      MINECRAFT_RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
+      - minecraft
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+
+  minecraft:
+    image: itzg/minecraft-server:latest
+    restart: unless-stopped
+    environment:
+      EULA: "TRUE"
+      TYPE: "FABRIC"
+      VERSION: "26.3"            # set to the version your world/mods use
+      OVERRIDE_SERVER_PROPERTIES: "false"
+    ports:
+      - "25565:25565"
+      - "25575:25575"
+    volumes:
+      - ../modules/minecraft-server:/data
