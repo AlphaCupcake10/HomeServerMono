@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 process.env.NODE_ENV = "test";
 process.env.MONGODB_URI = "mongodb://localhost:27017/home_server_mono_test";
 process.env.JWT_SECRET = "test-jwt-secret";
@@ -6,7 +9,10 @@ process.env.CORS_ORIGINS = "http://localhost:3000";
 process.env.RATE_LIMIT_WINDOW_MS = "900000";
 process.env.RATE_LIMIT_MAX = "100";
 process.env.MINECRAFT_CONTAINER_NAME = "minecraft-server";
-process.env.MINECRAFT_DATA_DIR = "/tmp/minecraft-test";
+process.env.MINECRAFT_DATA_DIR = path.join(os.tmpdir(), "minecraft-test");
 process.env.MINECRAFT_RCON_PORT = "25575";
 process.env.MINECRAFT_RCON_HOST = "127.0.0.1";
 process.env.MINECRAFT_RCON_PASSWORD = "test";
+
+process.env.SUPER_ADMIN_EMAIL = "admin@example.com";
+process.env.SUPER_ADMIN_PASSWORD = "test-admin-password";

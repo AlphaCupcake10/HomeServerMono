@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { login, logout, refresh, register } from "../controllers/auth.controller";
-import { protect } from "../middlewares/auth";
+import { protect, requireAdmin } from "../middlewares/auth";
+import { authLimiter } from "../middlewares/rateLimiter";
 import { validate } from "../middlewares/validate";
 import { loginSchema, refreshTokenSchema, registerSchema } from "../validators/auth.validator";
 
@@ -11,7 +12,7 @@ const router = Router();
  * /api/auth/register:
  *   post:
  *     tags: [Auth]
- *     summary: User registration
+ *     summary: Create a user (super admin only)
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -20,21 +21,25 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [username, password]
+ *             required: [email, password]
  *             properties:
- *               username:
+ *               email:
  *                 type: string
  *               password:
  *                 type: string
  *     responses:
  *       201:
  *         description: User created
- *       400:
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only the super admin can create users
+ *       422:
  *         description: Invalid request
  *       409:
  *         description: User already exists
  */
-router.post("/register", validate(registerSchema), register);
+router.post("/register", protect, requireAdmin, validate(registerSchema), register);
 
 /**
  * @openapi
@@ -42,17 +47,15 @@ router.post("/register", validate(registerSchema), register);
  *   post:
  *     tags: [Auth]
  *     summary: User login
- *     security:
- *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [username, password]
+ *             required: [email, password]
  *             properties:
- *               username:
+ *               email:
  *                 type: string
  *               password:
  *                 type: string
@@ -62,16 +65,14 @@ router.post("/register", validate(registerSchema), register);
  *       401:
  *         description: Invalid credentials
  */
-router.post("/login", validate(loginSchema), login);
+router.post("/login", authLimiter, validate(loginSchema), login);
 
 /**
  * @openapi
  * /api/auth/refresh:
  *   post:
  *     tags: [Auth]
- *     summary: Refresh JWT token
- *     security:
- *       - bearerAuth: []
+ *     summary: Rotate the refresh token and issue a new access token
  *     requestBody:
  *       required: true
  *       content:
@@ -88,7 +89,7 @@ router.post("/login", validate(loginSchema), login);
  *       401:
  *         description: Invalid or expired token
  */
-router.post("/refresh", validate(refreshTokenSchema), refresh);
+router.post("/refresh", authLimiter, validate(refreshTokenSchema), refresh);
 
 /**
  * @openapi

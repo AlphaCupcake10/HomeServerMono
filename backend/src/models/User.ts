@@ -1,9 +1,13 @@
 import { Schema, model, type HydratedDocument } from "mongoose";
 
+export const USER_ROLES = ["admin", "user"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
 export interface User {
   _id?: unknown;
   email: string;
   password: string;
+  role: UserRole;
   refreshToken?: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -12,7 +16,8 @@ export interface User {
 const userSchema = new Schema<User>(
   {
     email: { type: String, required: true, trim: true, lowercase: true, unique: true },
-    password: { type: String, required: true, minlength: 8 },
+    password: { type: String, required: true, select: false },
+    role: { type: String, enum: USER_ROLES, default: "user", required: true },
     refreshToken: { type: String, select: false },
   },
   { timestamps: true },

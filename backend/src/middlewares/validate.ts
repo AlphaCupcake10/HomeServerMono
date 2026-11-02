@@ -4,28 +4,27 @@ import { ApiError } from "../utils/errors";
 
 type ValidationSource = "body" | "params" | "query";
 
+/**
+ * Validates `req[source]` and replaces it with the coerced value (defaults applied, unknown
+ * keys stripped). Express 5 exposes `req.query` as a getter that re-parses the URL on every
+ * access, so it has to be shadowed with an own property for the validated value to stick.
+ */
 export const validate =
   (schema: Joi.ObjectSchema, source: ValidationSource = "body") =>
   (req: Request, _res: Response, next: NextFunction): void => {
-    let result;
-    if (source === "body") {
-      result = schema.validate(req.body, { abortEarly: false, allowUnknown: true });
-    } else if (source === "params") {
-      result = schema.validate(req.params, { abortEarly: false, allowUnknown: true });
-    } else {
-      result = schema.validate(req.query, { abortEarly: false, allowUnknown: true });
-    }
-    const { error, value } = result;
+    const { error, value } = schema.validate(req[source], {
+      abortEarly: false,
+      stripUnknown: true,
+    });
     if (error || !value) {
       next(new ApiError(422, error?.message ?? "Validation failed", error?.details));
       return;
     }
-    if (source === "body") {
-      req.body = value;
-    } else if (source === "params") {
-      req.params = value;
-    } else {
-      req.query = value;
-    }
+    Object.defineProperty(req, source, {
+      value,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
     next();
   };

@@ -7,33 +7,49 @@ services:
       MONGODB_URI: mongodb://mongo:27017/home_server_mono
       JWT_SECRET: ${JWT_SECRET}
       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
       CORS_ORIGINS: http://localhost:3000
+      EXPOSE_ERROR_DETAILS: ${EXPOSE_ERROR_DETAILS:-true}
       MINECRAFT_CONTAINER_NAME: minecraft-server
       MINECRAFT_DATA_DIR: /srv/minecraft
       MINECRAFT_RCON_PORT: 25575
-      MINECRAFT_RCON_HOST: 127.0.0.1
+      MINECRAFT_RCON_HOST: minecraft
       MINECRAFT_RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD}
     ports:
       - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../modules/minecraft-server:/srv/minecraft
     depends_on:
       - mongo
-      - minecraft
 
   mongo:
     image: mongo:7
+    # No authentication is configured, so only expose it on the host's loopback (for `make dev`).
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
 
+  # Off by default: the profile keeps a plain `docker compose up` from starting it, and
+  # `restart: "no"` keeps it down after a host/Docker restart. Create it once with
+  # `make minecraft-create` (docker-up does this); the API starts it via POST /api/minecraft/start.
   minecraft:
+    profiles: ["minecraft"]
     image: itzg/minecraft-server:latest
-    restart: unless-stopped
+    container_name: minecraft-server
+    restart: "no"
     environment:
       EULA: "TRUE"
       TYPE: "FABRIC"
-      VERSION: "26.3"            # set to the version your world/mods use
+      VERSION: "26.3"
       OVERRIDE_SERVER_PROPERTIES: "false"
+      RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD}
     ports:
       - "25565:25565"
-      - "25575:25575"
     volumes:
       - ../modules/minecraft-server:/data
+
+volumes:
+  mongo-data:

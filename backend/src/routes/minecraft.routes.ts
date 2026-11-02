@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getLogs, sendCommand, startServer, stopServer, updateProperties } from "../controllers/minecraft.controller";
+import { getLogs, getProperties, sendCommand, startServer, stopServer, updateProperties } from "../controllers/minecraft.controller";
 import { protect } from "../middlewares/auth";
 import { validate } from "../middlewares/validate";
 import { listLogsQuerySchema, sendCommandSchema, updatePropertiesSchema } from "../validators/minecraft.validator";
@@ -109,10 +109,27 @@ router.post("/commands", protect, validate(sendCommandSchema), sendCommand);
  *                   type: string
  *     responses:
  *       200:
- *         description: Properties updated and server restarted
+ *         description: Properties updated; restart the server to apply them
  *       401:
  *         description: Unauthorized
  */
 router.put("/properties", protect, validate(updatePropertiesSchema), updateProperties);
+
+/**
+ * @openapi
+ * /api/minecraft/properties:
+ *   get:
+ *     tags: [Minecraft]
+ *     summary: Read Minecraft server.properties
+ *     security:
+ *       - bearerAuth: []
+ *     parameters: []
+ *     responses:
+ *       200:
+ *         description: properties returned
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/properties", protect, getProperties);
 
 export default router;
