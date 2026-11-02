@@ -73,10 +73,11 @@ src/
   middlewares/  # error handling, auth (protect, requireAdmin), requireFeature, validation, rate limit, logging
   routes/       # route definitions (swagger JSDoc lives here); index.ts mounts them
   controllers/  # request handlers (record audit entries here)
-  services/     # AuthService, MinecraftService, SettingsService, AuditService
+  services/     # AuthService, MinecraftService, SettingsService, AuditService, ContainerService (stack logs)
   repositories/ # data access (UserRepository, SessionRepository, SettingsRepository, AuditRepository)
   models/       # Mongoose models (User, Session, Setting, AuditLog)
-  utils/        # logger, errors, response envelope, tokens + refresh cookie, docker + rcon clients
+  utils/        # logger, errors, response envelope, tokens + refresh cookie, docker + rcon clients,
+                # dockerHelpers (log demuxing, Docker error → ApiError mapping)
   validators/   # Joi schemas (settings.validator.ts also defines FEATURE_KEYS and the RuntimeSettings type)
   types/        # ambient/type declarations
   app.ts        # Express app assembly
@@ -90,12 +91,12 @@ tests/          # tests
 - `GET /health` — liveness (outside `/api`)
 - `/api/auth` — `POST login | refresh` (public, stricter rate limit), `POST logout` (auth), `POST register` (**super admin only**; creates a regular user, returns no tokens)
 - `GET /api/config` (any signed-in user) — client-safe runtime config: `{ features: { minecraft: { enabled } } }`
-- `/api/admin` (**super admin only**) — `GET|PUT settings` (runtime settings; PUT is a partial update, unknown keys → 422), `GET audit?limit=` (latest audit entries)
+- `/api/admin` (**super admin only**) — `GET|PUT settings` (runtime settings; PUT is a partial update, unknown keys → 422), `GET audit?limit=` (latest audit entries), `GET containers` (this stack's containers) and `GET containers/:name/logs?tail=&timestamps=` (read-only logs; only containers labelled `com.docker.compose.project=<docker.composeProject>` are listed or readable, anything else → 404)
 - `/api/minecraft` (auth + feature flag; 403 `FEATURE_DISABLED` while off) — `GET status`, `POST start | stop | commands`, `GET logs`, `GET|PUT properties`
   - `GET status` returns `state: "missing"` (not 404) when the container doesn't exist.
   - `GET properties` hides `rcon.password`; `PUT properties` rejects `rcon.password|rcon.port|enable-rcon` and values containing line breaks. Changes apply after a server restart.
 - `/api/docs` — Swagger UI
-- `/api` routes are rate limited (limits are runtime settings).
+- `/api` routes are rate limited per IP for requests without a valid access token (signed-in users are exempt because the UI polls); login/refresh failures have a stricter limit. Limits are runtime settings.
 
 ## Configuration
 
@@ -104,6 +105,8 @@ Three sources, never mixed:
 - **Deployment settings (YAML, restart to apply)** — `backend/config/*.yaml`, loaded by `src/config/config.ts` into the typed `config` object (`config.server.port`, `config.minecraft.rcon.host`, ...). Merge order: `config.yaml` → `$CONFIG_OVERLAY` (Docker: `config/config.docker.yaml`) → `config.local.yaml` if present (skipped under `NODE_ENV=test`). Objects merge, arrays/values replace. Unknown keys and bad types fail at startup. Relative `minecraft.dataDir` resolves against `backend/`. Env vars do **not** override YAML; old env names only trigger a startup warning.
 - **Runtime settings (MongoDB, applied immediately)** — feature flags, `exposeErrorDetails`, `logLevel`, rate-limit maxima. Edited by the super admin on the frontend Settings page (`PUT /api/admin/settings`). `SettingsService` stores one document (`settings` collection, `_id: "runtime"`), overlays it on `runtimeDefaults` from YAML (so new settings get defaults without a migration), and writes the live values into `config/runtimeSettings.ts`, which the logger, error helpers, rate limiter and `requireFeature` read. `runtimeDefaults` in YAML only seeds values the DB doesn't have.
 - **Secrets + mode** — `backend/.env` (template `.env.example`), validated in `src/config/env.ts`: `NODE_ENV`, `JWT_SECRET`, `REFRESH_TOKEN_SECRET`, `SUPER_ADMIN_PASSWORD`, `MINECRAFT_RCON_PASSWORD`. In production startup fails if secrets contain `change-me` or JWT secrets are under 32 chars. `make env` creates `.env` and appends secrets added to `.env.example` later.
+
+`docker.composeProject` (default `backend`, the folder holding `docker-compose.yml`) scopes the admin logs viewer to this stack's containers.
 
 Docker: compose passes only `NODE_ENV`, `CONFIG_OVERLAY` and the secrets, and bind-mounts `./config` read-only at `/app/config`, so YAML edits need a container restart, not a rebuild. The API also mounts `/var/run/docker.sock` and `modules/minecraft-server` at `/srv/minecraft`. Behind nginx the Docker overlay sets `server.trustProxy: 1`; nginx overwrites `X-Forwarded-For` so clients can't spoof it.
 
@@ -132,6 +135,7 @@ Disabling a feature blocks its API; it doesn't stop anything already running (e.
 - Data: TanStack Query hooks per feature in `src/features/<feature>/api.ts`. `useAppConfig()` polls `/api/config` (and refetches on focus); the Settings page invalidates it after saving.
 - Errors: `ApiError` carries the backend's `code` and `details`; `ErrorAlert` renders them (validation messages as a list, other details as JSON).
 - Layout (`src/layout/`): desktop sidebar collapses to an icon rail (state in localStorage), groups open as flyouts when collapsed; on mobile the sidebar is a `Sheet` opened from the top bar.
+- Logs page (`src/features/logs/`, super admin): pick a stack container (side list on desktop, select on mobile, `?container=` in the URL), tail/auto-refresh/timestamps/filter/download; Pino JSON lines are pretty-printed and coloured by level (`formatLogLine.ts`). `components/LogOutput.tsx` is the shared auto-following log box (also used by the Minecraft Console).
 - `src/components/ui/` is generated by the shadcn CLI (`npx shadcn@latest add <name>`); don't hand-format it (it's in `.prettierignore`).
 - Dev server proxies `/api` to `localhost:3000`; in Docker nginx does the same, so the app is always same-origin.
 

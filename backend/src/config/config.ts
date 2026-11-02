@@ -28,6 +28,8 @@ export interface Config {
   rateLimit: { windowMs: number };
   /** Initial values for the runtime settings; the database copy wins once it exists. */
   runtimeDefaults: RuntimeSettings;
+  /** Containers of this compose project are shown in the admin logs viewer (nothing else). */
+  docker: { composeProject: string };
   minecraft: {
     containerName: string;
     /** Absolute path (relative values in YAML resolve against the backend folder). */
@@ -56,6 +58,11 @@ const configSchema = Joi.object({
     windowMs: Joi.number().integer().min(1).default(900000),
   }).default(),
   runtimeDefaults: runtimeSettingsSchema.default(),
+  docker: Joi.object({
+    composeProject: Joi.string()
+      .pattern(/^[a-z0-9][a-z0-9_-]*$/)
+      .default("backend"),
+  }).default(),
   minecraft: Joi.object({
     containerName: Joi.string().required(),
     dataDir: Joi.string().required(),

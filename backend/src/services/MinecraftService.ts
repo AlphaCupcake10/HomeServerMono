@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import docker from "../utils/docker";
+import { readContainerLogs, toDockerApiError } from "../utils/dockerHelpers";
 import { sendRconCommand } from "../utils/rcon";
 import { ApiError, describeError } from "../utils/errors";
 import { logger } from "../utils/logger";
@@ -24,40 +25,11 @@ const withPropertiesLock = <T>(task: () => Promise<T>): Promise<T> => {
   return run;
 };
 
-/** Translates Docker daemon errors (dockerode sets `statusCode`) into API errors. */
-const toApiError = (error: unknown, alreadyMessage: string): unknown => {
-  const statusCode = (error as { statusCode?: number } | null)?.statusCode;
-  if (statusCode === 304) return new ApiError(409, alreadyMessage);
-  if (statusCode === 404) {
-    return new ApiError(
-      404,
-      `Container "${config.minecraft.containerName}" does not exist; create it with "make minecraft-create"`,
-      describeError(error),
-    );
-  }
-  if (statusCode !== undefined) {
-    return new ApiError(502, "Docker daemon returned an error", describeError(error));
-  }
-  const code = (error as NodeJS.ErrnoException | null)?.code;
-  if (code === "ENOENT" || code === "ECONNREFUSED" || code === "EACCES") {
-    return new ApiError(502, "Cannot reach the Docker daemon (is the socket mounted?)", describeError(error));
-  }
-  return error;
-};
-
-const parseDockerLogs = (buffer: Buffer): string => {
-  // Docker multiplexes stdout/stderr as frames: 1 byte stream, 3 bytes padding, 4 bytes length.
-  let offset = 0;
-  let output = "";
-  while (offset + 8 <= buffer.length) {
-    const payloadLength = buffer.readUInt32BE(offset + 4);
-    const start = offset + 8;
-    const end = Math.min(start + payloadLength, buffer.length);
-    output += buffer.toString("utf-8", start, end);
-    offset = end;
-  }
-  return output;
-};
+const toApiError = (error: unknown, alreadyMessage: string): unknown =>
+  toDockerApiError(error, {
+    notFound: `Container "${config.minecraft.containerName}" does not exist; create it with "make minecraft-create"`,
+    notModified: alreadyMessage,
+  });
 
 /**
  * Applies `properties` to server.properties content: existing keys are updated in place
@@ -184,16 +156,7 @@ export const MinecraftService = {
   },
   async getLogs(tail: number): Promise<string> {
     try {
-      const container = docker.getContainer(config.minecraft.containerName);
-      const info = await container.inspect();
-      const buffer = (await container.logs({
-        stdout: true,
-        stderr: true,
-        follow: false,
-        tail,
-      })) as unknown as Buffer;
-      // TTY containers return a raw stream instead of multiplexed frames.
-      return info.Config?.Tty ? buffer.toString("utf-8") : parseDockerLogs(buffer);
+      return await readContainerLogs(docker.getContainer(config.minecraft.containerName), { tail });
     } catch (error) {
       throw toApiError(error, "Unexpected Docker response");
     }

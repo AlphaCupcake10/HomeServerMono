@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { Info, Loader2, RefreshCw, Send, Trash2 } from 'lucide-react';
 import { ApiError } from '@/api/client';
 import { ErrorAlert } from '@/components/ErrorAlert';
+import { LogOutput } from '@/components/LogOutput';
 import { PageHeader } from '@/components/PageHeader';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -40,14 +41,6 @@ const LogViewer = () => {
   const [tail, setTail] = useState(200);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const { data: logs, error, isFetching, refetch } = useServerLogs(tail, autoRefresh);
-  const scrollRef = useRef<HTMLPreElement>(null);
-  const stickToBottom = useRef(true);
-
-  // Follow new output unless the user has scrolled up to read something.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [logs]);
 
   return (
     <Card>
@@ -89,16 +82,9 @@ const LogViewer = () => {
         </div>
 
         <ErrorAlert error={error} title="Couldn't load the log" />
-        <pre
-          ref={scrollRef}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-          }}
-          className="h-[50vh] min-h-64 overflow-auto rounded-md border bg-zinc-950 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-zinc-100"
-        >
+        <LogOutput followKey={logs}>
           {logs === undefined ? 'Loading…' : logs.trim() || 'No log output yet.'}
-        </pre>
+        </LogOutput>
       </CardContent>
     </Card>
   );

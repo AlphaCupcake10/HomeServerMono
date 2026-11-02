@@ -23,7 +23,7 @@ The Minecraft server container is created but stays off until you start it from 
 
 ## Signing in
 
-Log in as the super admin with `auth.superAdminEmail` from `backend/config/config.yaml` and `SUPER_ADMIN_PASSWORD` from `backend/.env`. Only the super admin can create other users (Users page) and see the Settings page.
+Log in as the super admin with `auth.superAdminEmail` from `backend/config/config.yaml` and `SUPER_ADMIN_PASSWORD` from `backend/.env`. Only the super admin can create other users (Users page), read the stack's container logs (Logs page) and see the Settings page.
 
 ## Configuration
 

@@ -266,12 +266,20 @@ describe("runtime settings", () => {
   });
 
   // Last: the rate-limit store is shared across this file's requests.
-  it("applies rate-limit changes immediately", async () => {
+  it("applies rate-limit changes immediately to anonymous requests", async () => {
     expect((await putSettings({ rateLimit: { max: 1 } })).status).toBe(200);
-    expect((await request(app).get("/api/config").set(userAuth)).status).toBe(429);
+    expect((await request(app).get("/api/config")).status).toBe(429);
 
-    // /api is now throttled, so raise it again directly.
     await SettingsService.update({ rateLimit: { max: 1000 } }, { id: "1", email: "admin@example.com" });
-    expect((await request(app).get("/api/config").set(userAuth)).status).toBe(200);
+    expect((await request(app).get("/api/config")).status).toBe(401);
+  });
+
+  it("never throttles signed-in users (the UI polls), but does throttle forged tokens", async () => {
+    runtimeSettings.set({ ...config.runtimeDefaults, rateLimit: { max: 1, authMax: 10 } });
+    for (let i = 0; i < 5; i++) {
+      expect((await request(app).get("/api/config").set(userAuth)).status).toBe(200);
+    }
+    const forged = { Authorization: "Bearer not-a-real-token" };
+    expect((await request(app).get("/api/config").set(forged)).status).toBe(429);
   });
 });

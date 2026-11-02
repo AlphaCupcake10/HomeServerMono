@@ -311,7 +311,11 @@ const SettingsPage = () => {
               <CardContent className="divide-y">
                 {(
                   [
-                    ['max', 'API requests', 'All /api requests.'],
+                    [
+                      'max',
+                      'Anonymous API requests',
+                      'Requests without a valid sign-in (signed-in users are not limited).',
+                    ],
                     ['authMax', 'Failed sign-in attempts', 'Failed login and refresh attempts.'],
                   ] as const
                 ).map(([key, title, description]) => (

@@ -1,8 +1,18 @@
 import { Router } from "express";
-import { getSettings, listAudit, updateSettings } from "../controllers/admin.controller";
+import {
+  getContainerLogs,
+  getSettings,
+  listAudit,
+  listContainers,
+  updateSettings,
+} from "../controllers/admin.controller";
 import { protect, requireAdmin } from "../middlewares/auth";
 import { validate } from "../middlewares/validate";
-import { auditQuerySchema } from "../validators/admin.validator";
+import {
+  auditQuerySchema,
+  containerLogsQuerySchema,
+  containerParamsSchema,
+} from "../validators/admin.validator";
 
 // Super admin only: role "admin" is held solely by the account synced from auth.superAdminEmail.
 const router = Router();
@@ -89,5 +99,64 @@ router.put("/settings", updateSettings);
  *         description: Super admin only
  */
 router.get("/audit", validate(auditQuerySchema, "query"), listAudit);
+
+/**
+ * @openapi
+ * /api/admin/containers:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Containers of this compose stack (docker.composeProject), running or not
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: "{ containers: [{ name, service, image, state, status }] }"
+ *       403:
+ *         description: Super admin only
+ *       502:
+ *         description: Docker daemon unreachable
+ */
+router.get("/containers", listContainers);
+
+/**
+ * @openapi
+ * /api/admin/containers/{name}/logs:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Recent stdout/stderr of one container in this stack
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: tail
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 5000
+ *           default: 500
+ *       - in: query
+ *         name: timestamps
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *     responses:
+ *       200:
+ *         description: "{ container, logs }"
+ *       403:
+ *         description: Super admin only
+ *       404:
+ *         description: Not a container of this stack
+ */
+router.get(
+  "/containers/:name/logs",
+  validate(containerParamsSchema, "params"),
+  validate(containerLogsQuerySchema, "query"),
+  getContainerLogs,
+);
 
 export default router;

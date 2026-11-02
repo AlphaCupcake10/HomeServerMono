@@ -42,10 +42,16 @@ runtimeDefaults:
   exposeErrorDetails: true
   logLevel: info
   rateLimit:
-    # Requests per window per client IP across /api.
+    # Requests per window per client IP across /api without a valid access token
+    # (signed-in users aren't limited: the UI polls logs/status every few seconds).
     max: 100
     # Failed login/refresh attempts per window.
     authMax: 10
+
+docker:
+  # Compose project whose containers the super admin's Logs page can read (its
+  # com.docker.compose.project label; defaults to the folder name of docker-compose.yml).
+  composeProject: backend
 
 minecraft:
   containerName: minecraft-server

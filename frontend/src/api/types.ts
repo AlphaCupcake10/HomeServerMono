@@ -69,6 +69,18 @@ export interface AuditEntry {
   createdAt?: string;
 }
 
+export interface ContainerSummary {
+  /** e.g. "backend-api-1" */
+  name: string;
+  /** Compose service, e.g. "api". */
+  service: string;
+  image: string;
+  /** "running", "exited", ... */
+  state: string;
+  /** e.g. "Up 2 hours (healthy)" */
+  status: string;
+}
+
 // --- Minecraft ---
 
 export interface ServerStatus {

@@ -3,6 +3,7 @@ import {
   Activity,
   LayoutDashboard,
   Pickaxe,
+  ScrollText,
   Settings,
   SlidersHorizontal,
   Terminal,
@@ -77,6 +78,13 @@ export const appRoutes: AppRoute[] = [
     icon: Users,
     roles: ['admin'],
     page: () => import('@/features/users/CreateUserPage'),
+  },
+  {
+    path: 'logs',
+    title: 'Logs',
+    icon: ScrollText,
+    roles: ['admin'],
+    page: () => import('@/features/logs/LogsPage'),
   },
   {
     path: 'settings',
