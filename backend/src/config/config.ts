@@ -4,21 +4,30 @@ import Joi from "joi";
 import { parse } from "yaml";
 import type { SignOptions } from "jsonwebtoken";
 import { env, type Env } from "./env";
+import { runtimeSettingsSchema, type RuntimeSettings } from "../validators/settings.validator";
 
 type Ttl = NonNullable<SignOptions["expiresIn"]>;
 
-/** Non-secret settings, loaded from backend/config/*.yaml. Secrets live in `env`. */
+/**
+ * Non-secret settings, loaded from backend/config/*.yaml. Secrets live in `env`; settings the
+ * super admin edits at runtime live in MongoDB (see `runtimeSettings`), seeded from `runtimeDefaults`.
+ */
 export interface Config {
   server: {
     port: number;
     corsOrigins: string[];
     trustProxy: number;
-    exposeErrorDetails: boolean;
   };
   database: { uri: string };
-  auth: { accessTokenTtl: Ttl; refreshTokenTtl: Ttl; superAdminEmail: string };
-  rateLimit: { windowMs: number; max: number; authMax: number };
-  log: { level: string };
+  auth: {
+    accessTokenTtl: Ttl;
+    refreshTokenTtl: Ttl;
+    superAdminEmail: string;
+    refreshCookieSecure: boolean;
+  };
+  rateLimit: { windowMs: number };
+  /** Initial values for the runtime settings; the database copy wins once it exists. */
+  runtimeDefaults: RuntimeSettings;
   minecraft: {
     containerName: string;
     /** Absolute path (relative values in YAML resolve against the backend folder). */
@@ -32,8 +41,6 @@ const configSchema = Joi.object({
     port: Joi.number().port().default(3000),
     corsOrigins: Joi.array().items(Joi.string().min(1)).min(1).default(["http://localhost:3000"]),
     trustProxy: Joi.number().integer().min(0).default(0),
-    // Defaults to on outside production (applied after validation).
-    exposeErrorDetails: Joi.boolean(),
   }).default(),
   database: Joi.object({
     uri: Joi.string().required(),
@@ -42,17 +49,13 @@ const configSchema = Joi.object({
     accessTokenTtl: Joi.string().default("15m"),
     refreshTokenTtl: Joi.string().default("7d"),
     superAdminEmail: Joi.string().email().required(),
+    // Set true when the app is served over HTTPS.
+    refreshCookieSecure: Joi.boolean().default(false),
   }).required(),
   rateLimit: Joi.object({
     windowMs: Joi.number().integer().min(1).default(900000),
-    max: Joi.number().integer().min(1).default(100),
-    authMax: Joi.number().integer().min(1).default(10),
   }).default(),
-  log: Joi.object({
-    level: Joi.string()
-      .valid("fatal", "error", "warn", "info", "debug", "trace", "silent")
-      .default("info"),
-  }).default(),
+  runtimeDefaults: runtimeSettingsSchema.default(),
   minecraft: Joi.object({
     containerName: Joi.string().required(),
     dataDir: Joi.string().required(),
@@ -66,13 +69,13 @@ const configSchema = Joi.object({
 /** backend/ — two levels up from both src/config (tsx) and dist/config (compiled). */
 const DEFAULT_ROOT_DIR = path.resolve(__dirname, "../..");
 
-type PlainObject = Record<string, unknown>;
+export type PlainObject = Record<string, unknown>;
 
-const isPlainObject = (value: unknown): value is PlainObject =>
+export const isPlainObject = (value: unknown): value is PlainObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Objects merge recursively; arrays and scalars from `override` replace those in `base`. */
-const deepMerge = (base: PlainObject, override: PlainObject): PlainObject => {
+export const deepMerge = (base: PlainObject, override: PlainObject): PlainObject => {
   const merged: PlainObject = { ...base };
   for (const [key, value] of Object.entries(override)) {
     if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
@@ -137,7 +140,6 @@ export const loadConfig = ({
   }
 
   const config = value as Config;
-  config.server.exposeErrorDetails ??= nodeEnv !== "production";
   config.minecraft.dataDir = path.resolve(rootDir, config.minecraft.dataDir);
   return config;
 };
@@ -147,15 +149,15 @@ const LEGACY_ENV_VARS: Record<string, string> = {
   PORT: "server.port",
   CORS_ORIGINS: "server.corsOrigins",
   TRUST_PROXY: "server.trustProxy",
-  EXPOSE_ERROR_DETAILS: "server.exposeErrorDetails",
+  EXPOSE_ERROR_DETAILS: "runtimeDefaults.exposeErrorDetails (or the Settings page)",
   MONGODB_URI: "database.uri",
   JWT_EXPIRES_IN: "auth.accessTokenTtl",
   REFRESH_TOKEN_EXPIRES_IN: "auth.refreshTokenTtl",
   SUPER_ADMIN_EMAIL: "auth.superAdminEmail",
   RATE_LIMIT_WINDOW_MS: "rateLimit.windowMs",
-  RATE_LIMIT_MAX: "rateLimit.max",
-  AUTH_RATE_LIMIT_MAX: "rateLimit.authMax",
-  LOG_LEVEL: "log.level",
+  RATE_LIMIT_MAX: "runtimeDefaults.rateLimit.max (or the Settings page)",
+  AUTH_RATE_LIMIT_MAX: "runtimeDefaults.rateLimit.authMax (or the Settings page)",
+  LOG_LEVEL: "runtimeDefaults.logLevel (or the Settings page)",
   MINECRAFT_CONTAINER_NAME: "minecraft.containerName",
   MINECRAFT_DATA_DIR: "minecraft.dataDir",
   MINECRAFT_RCON_HOST: "minecraft.rcon.host",

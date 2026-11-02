@@ -2,12 +2,14 @@ import "dotenv/config";
 import { startServer, gracefulShutdown } from "./server";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { AuthService } from "./services/AuthService";
+import { SettingsService } from "./services/SettingsService";
 import { logger } from "./utils/logger";
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const run = async (): Promise<void> => {
   await connectDatabase();
+  await SettingsService.init();
   await AuthService.ensureSuperAdmin();
 
   const server = startServer();

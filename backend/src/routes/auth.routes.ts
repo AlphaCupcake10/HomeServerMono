@@ -61,7 +61,7 @@ router.post("/register", protect, requireAdmin, validate(registerSchema), regist
  *                 type: string
  *     responses:
  *       200:
- *         description: Login successful
+ *         description: "{ user, accessToken }. The refresh token is set as an httpOnly `refreshToken` cookie (path /api/auth), never returned in the body."
  *       401:
  *         description: Invalid credentials
  */
@@ -73,21 +73,21 @@ router.post("/login", authLimiter, validate(loginSchema), login);
  *   post:
  *     tags: [Auth]
  *     summary: Rotate the refresh token and issue a new access token
+ *     description: Uses the `refreshToken` cookie. Non-browser clients may send the token in the body instead.
  *     requestBody:
- *       required: true
+ *       required: false
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [refreshToken]
  *             properties:
  *               refreshToken:
  *                 type: string
  *     responses:
  *       200:
- *         description: New token issued
+ *         description: "{ user, accessToken }; the rotated refresh token replaces the cookie"
  *       401:
- *         description: Invalid or expired token
+ *         description: Missing, invalid or expired token (the cookie is cleared)
  */
 router.post("/refresh", authLimiter, validate(refreshTokenSchema), refresh);
 
@@ -101,7 +101,7 @@ router.post("/refresh", authLimiter, validate(refreshTokenSchema), refresh);
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Token revoked
+ *         description: Session revoked and refresh cookie cleared
  *       401:
  *         description: Unauthorized
  */

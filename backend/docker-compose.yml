@@ -10,14 +10,25 @@ services:
       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
       MINECRAFT_RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD}
+    # Browsers reach the API through the web service's /api proxy; this port is only for local
+    # debugging (curl, Swagger at http://localhost:3000/api/docs).
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../modules/minecraft-server:/srv/minecraft
       - ./config:/app/config:ro
     depends_on:
       - mongo
+
+  # The web UI: nginx serves the built frontend and proxies /api to the api service, so the
+  # browser sees a single origin (no CORS; the httpOnly refresh cookie works).
+  web:
+    build: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
   mongo:
     image: mongo:7

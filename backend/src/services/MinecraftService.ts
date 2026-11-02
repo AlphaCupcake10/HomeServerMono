@@ -121,7 +121,50 @@ const syncRconProperties = (): Promise<void> =>
     }
   });
 
+export interface ServerStatus {
+  container: string;
+  /** Docker's state ("running", "exited", "restarting", ...) or "missing" if not created yet. */
+  state: string;
+  running: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  exitCode: number | null;
+  health: string | null;
+}
+
+/** Docker reports never-set timestamps as the zero time. */
+const dockerTime = (value?: string): string | null =>
+  value && !value.startsWith("0001-01-01") ? value : null;
+
 export const MinecraftService = {
+  async status(): Promise<ServerStatus> {
+    const container = config.minecraft.containerName;
+    try {
+      const { State: state } = await docker.getContainer(container).inspect();
+      return {
+        container,
+        state: state.Status,
+        running: state.Running,
+        startedAt: dockerTime(state.StartedAt),
+        finishedAt: dockerTime(state.FinishedAt),
+        exitCode: state.Running ? null : state.ExitCode,
+        health: state.Health?.Status ?? null,
+      };
+    } catch (error) {
+      if ((error as { statusCode?: number } | null)?.statusCode === 404) {
+        return {
+          container,
+          state: "missing",
+          running: false,
+          startedAt: null,
+          finishedAt: null,
+          exitCode: null,
+          health: null,
+        };
+      }
+      throw toApiError(error, "Unexpected Docker response");
+    }
+  },
   async start(): Promise<{ container: string }> {
     await syncRconProperties();
     try {

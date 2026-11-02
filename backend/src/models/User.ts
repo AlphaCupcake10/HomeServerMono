@@ -8,7 +8,6 @@ export interface User {
   email: string;
   password: string;
   role: UserRole;
-  refreshToken?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -18,7 +17,7 @@ const userSchema = new Schema<User>(
     email: { type: String, required: true, trim: true, lowercase: true, unique: true },
     password: { type: String, required: true, select: false },
     role: { type: String, enum: USER_ROLES, default: "user", required: true },
-    refreshToken: { type: String, select: false },
+    // Refresh tokens live in the `sessions` collection (one per signed-in device).
   },
   { timestamps: true },
 );

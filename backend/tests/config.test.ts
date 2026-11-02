@@ -44,8 +44,14 @@ describe("loadConfig", () => {
     const config = loadConfig({ rootDir, nodeEnv: "development" });
     expect(config.database.uri).toBe("mongodb://localhost:27017/base");
     expect(config.server.port).toBe(3000);
-    expect(config.rateLimit).toEqual({ windowMs: 900000, max: 100, authMax: 10 });
-    expect(config.log.level).toBe("info");
+    expect(config.rateLimit).toEqual({ windowMs: 900000 });
+    expect(config.auth.refreshCookieSecure).toBe(false);
+    expect(config.runtimeDefaults).toEqual({
+      features: { minecraft: { enabled: true } },
+      exposeErrorDetails: true,
+      logLevel: "info",
+      rateLimit: { max: 100, authMax: 10 },
+    });
     expect(config.minecraft.rcon.port).toBe(25575);
   });
 
@@ -104,13 +110,23 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ rootDir })).toThrow(/Config file not found/);
   });
 
-  it("defaults exposeErrorDetails to on outside production, off in production", () => {
-    expect(loadConfig({ rootDir, nodeEnv: "development" }).server.exposeErrorDetails).toBe(true);
-    expect(loadConfig({ rootDir, nodeEnv: "production" }).server.exposeErrorDetails).toBe(false);
+  it("merges partial runtimeDefaults over the built-in defaults", () => {
+    writeConfig(
+      "config.local.yaml",
+      "runtimeDefaults:\n  logLevel: debug\n  features:\n    minecraft:\n      enabled: false\n",
+    );
+    const { runtimeDefaults } = loadConfig({ rootDir, includeLocal: true });
+    expect(runtimeDefaults.logLevel).toBe("debug");
+    expect(runtimeDefaults.features.minecraft.enabled).toBe(false);
+    expect(runtimeDefaults.rateLimit).toEqual({ max: 100, authMax: 10 });
+  });
+
+  it("rejects invalid runtimeDefaults and settings that moved out of YAML", () => {
+    writeConfig("config.local.yaml", "runtimeDefaults:\n  logLevel: loud\n");
+    expect(() => loadConfig({ rootDir, includeLocal: true })).toThrow(/runtimeDefaults\.logLevel/);
 
     writeConfig("config.local.yaml", "server:\n  exposeErrorDetails: true\n");
-    const explicit = loadConfig({ rootDir, nodeEnv: "production", includeLocal: true });
-    expect(explicit.server.exposeErrorDetails).toBe(true);
+    expect(() => loadConfig({ rootDir, includeLocal: true })).toThrow(/server\.exposeErrorDetails/);
   });
 
   it("ignores prototype-polluting keys", () => {

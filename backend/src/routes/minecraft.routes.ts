@@ -1,10 +1,38 @@
 import { Router } from "express";
-import { getLogs, getProperties, sendCommand, startServer, stopServer, updateProperties } from "../controllers/minecraft.controller";
-import { protect } from "../middlewares/auth";
+import {
+  getLogs,
+  getProperties,
+  getStatus,
+  sendCommand,
+  startServer,
+  stopServer,
+  updateProperties,
+} from "../controllers/minecraft.controller";
 import { validate } from "../middlewares/validate";
 import { listLogsQuerySchema, sendCommandSchema, updatePropertiesSchema } from "../validators/minecraft.validator";
 
+// Mounted behind protect + requireFeature("minecraft") in routes/index.ts: every route needs a
+// signed-in user and returns 403 FEATURE_DISABLED while the feature is switched off.
 const router = Router();
+
+/**
+ * @openapi
+ * /api/minecraft/status:
+ *   get:
+ *     tags: [Minecraft]
+ *     summary: Container state of the Minecraft server
+ *     description: state is Docker's status (running, exited, ...) or "missing" when the container hasn't been created.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: "{ container, state, running, startedAt, finishedAt, exitCode, health }"
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Feature disabled (FEATURE_DISABLED)
+ */
+router.get("/status", getStatus);
 
 /**
  * @openapi
@@ -20,7 +48,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.post("/start", protect, startServer);
+router.post("/start", startServer);
 
 /**
  * @openapi
@@ -36,7 +64,7 @@ router.post("/start", protect, startServer);
  *       401:
  *         description: Unauthorized
  */
-router.post("/stop", protect, stopServer);
+router.post("/stop", stopServer);
 
 /**
  * @openapi
@@ -59,7 +87,7 @@ router.post("/stop", protect, stopServer);
  *       401:
  *         description: Unauthorized
  */
-router.get("/logs", protect, validate(listLogsQuerySchema, "query"), getLogs);
+router.get("/logs", validate(listLogsQuerySchema, "query"), getLogs);
 
 /**
  * @openapi
@@ -85,7 +113,7 @@ router.get("/logs", protect, validate(listLogsQuerySchema, "query"), getLogs);
  *       401:
  *         description: Unauthorized
  */
-router.post("/commands", protect, validate(sendCommandSchema), sendCommand);
+router.post("/commands", validate(sendCommandSchema), sendCommand);
 
 /**
  * @openapi
@@ -113,7 +141,7 @@ router.post("/commands", protect, validate(sendCommandSchema), sendCommand);
  *       401:
  *         description: Unauthorized
  */
-router.put("/properties", protect, validate(updatePropertiesSchema), updateProperties);
+router.put("/properties", validate(updatePropertiesSchema), updateProperties);
 
 /**
  * @openapi
@@ -130,6 +158,6 @@ router.put("/properties", protect, validate(updatePropertiesSchema), updatePrope
  *       401:
  *         description: Unauthorized
  */
-router.get("/properties", protect, getProperties);
+router.get("/properties", getProperties);
 
 export default router;

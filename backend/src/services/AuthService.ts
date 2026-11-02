@@ -4,15 +4,25 @@ import { config } from "../config/config";
 import { env } from "../config/env";
 import { ApiError } from "../utils/errors";
 import { logger } from "../utils/logger";
+import { SessionRepository } from "../repositories/SessionRepository";
 import { UserRepository } from "../repositories/UserRepository";
 import {
   hashToken,
+  refreshTokenSessionId,
   signAccessToken,
   signRefreshToken,
+  tokenExpiresAt,
   verifyRefreshToken,
 } from "../utils/tokens";
 
 const SALT_ROUNDS = 10;
+
+/** Describes the client a session belongs to (shown in a future "active sessions" view). */
+export interface ClientInfo {
+  userAgent?: string;
+}
+
+type SessionUser = { _id: unknown; email: string; role: string };
 
 // Compared against when the email is unknown so login timing doesn't reveal which emails exist.
 const DUMMY_HASH = bcrypt.hashSync("timing-equalisation", SALT_ROUNDS);
@@ -23,13 +33,37 @@ const safeEqual = (a: string, b: string): boolean => {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 };
 
-const issueTokens = async (user: { _id: unknown; email: string }) => {
+const sessionResult = (user: SessionUser, refreshToken: string) => {
   const id = String(user._id);
-  const accessToken = signAccessToken({ sub: id, email: user.email });
-  const refreshToken = signRefreshToken({ sub: id, email: user.email });
-  await UserRepository.updateRefreshToken(id, hashToken(refreshToken));
-  return { accessToken, refreshToken };
+  return {
+    user: { id, email: user.email, role: user.role },
+    accessToken: signAccessToken({ sub: id, email: user.email }),
+    refreshToken,
+  };
 };
+
+const expiryOf = (token: string): Date => {
+  const expiresAt = tokenExpiresAt(token);
+  if (!expiresAt) throw new Error("Refresh token has no expiry");
+  return expiresAt;
+};
+
+/** Starts a new session (one per signed-in device) and issues its first token pair. */
+const startSession = async (user: SessionUser, client: ClientInfo) => {
+  const userId = String(user._id);
+  const sid = SessionRepository.newId();
+  const refreshToken = signRefreshToken({ sub: userId, email: user.email, sid });
+  await SessionRepository.create({
+    id: sid,
+    userId,
+    tokenHash: hashToken(refreshToken),
+    expiresAt: expiryOf(refreshToken),
+    userAgent: client.userAgent?.slice(0, 200),
+  });
+  return sessionResult(user, refreshToken);
+};
+
+const invalidRefreshToken = () => new ApiError(401, "Invalid refresh token");
 
 export const AuthService = {
   /**
@@ -51,6 +85,10 @@ export const AuthService = {
         ? existing.password
         : await bcrypt.hash(env.SUPER_ADMIN_PASSWORD, SALT_ROUNDS);
       await UserRepository.setCredentials(String(existing._id), { password, role: "admin" });
+      if (!passwordMatches) {
+        // A new password must not leave old sign-ins alive.
+        await SessionRepository.deleteAllForUser(String(existing._id));
+      }
       logger.info({ email }, "Super admin synced with environment");
     }
   },
@@ -68,36 +106,55 @@ export const AuthService = {
     });
     return { user: { id: String(user._id), email: user.email, role: user.role } };
   },
-  async login(data: { email: string; password: string }) {
+  /** Signs in and starts a new session; other devices' sessions are unaffected. */
+  async login(data: { email: string; password: string }, client: ClientInfo = {}) {
     const user = await UserRepository.findByEmail(data.email);
     const valid = await bcrypt.compare(data.password, user?.password ?? DUMMY_HASH);
     if (!user || !valid) {
       throw new ApiError(401, "Invalid credentials");
     }
-    const tokens = await issueTokens(user);
-    return { user: { id: String(user._id), email: user.email, role: user.role }, ...tokens };
+    return startSession(user, client);
   },
+  /** Rotates the refresh token within its session. */
   async refresh(token: string) {
     let sub: string | undefined;
+    let sid: string | undefined;
     try {
       const payload = verifyRefreshToken(token);
-      sub = typeof payload === "string" ? undefined : payload.sub;
+      if (typeof payload !== "string") {
+        sub = payload.sub;
+        sid = typeof payload.sid === "string" ? payload.sid : undefined;
+      }
     } catch {
-      throw new ApiError(401, "Invalid refresh token");
+      throw invalidRefreshToken();
     }
-    const user = sub ? await UserRepository.findByIdWithRefreshToken(sub) : null;
-    if (!user || !user.refreshToken) {
-      throw new ApiError(401, "Invalid refresh token");
+    // Tokens without a session id predate per-device sessions: sign in again.
+    if (!sub || !sid) throw invalidRefreshToken();
+
+    const session = await SessionRepository.findById(sid);
+    if (!session || session.userId !== sub) throw invalidRefreshToken();
+    if (!safeEqual(session.tokenHash, hashToken(token))) {
+      // A validly signed but superseded token was replayed (possibly stolen): end this session.
+      // Other devices keep their own sessions.
+      await SessionRepository.delete(sid, sub);
+      logger.warn({ userId: sub, sessionId: sid }, "Refresh token reuse detected; session revoked");
+      throw invalidRefreshToken();
     }
-    if (!safeEqual(user.refreshToken, hashToken(token))) {
-      // A validly signed but superseded token was replayed: revoke the session.
-      await UserRepository.clearRefreshToken(String(user._id));
-      throw new ApiError(401, "Invalid refresh token");
+
+    const user = await UserRepository.findById(sub);
+    if (!user) {
+      await SessionRepository.delete(sid, sub);
+      throw invalidRefreshToken();
     }
-    const tokens = await issueTokens(user);
-    return { user: { id: String(user._id), email: user.email, role: user.role }, ...tokens };
+    const refreshToken = signRefreshToken({ sub, email: user.email, sid });
+    await SessionRepository.rotate(sid, hashToken(refreshToken), expiryOf(refreshToken));
+    return sessionResult(user, refreshToken);
   },
-  async logout(userId: string) {
-    await UserRepository.clearRefreshToken(userId);
+  /** Ends the session the refresh token belongs to (this device only). */
+  async logout(userId: string, refreshToken?: string) {
+    const sid = refreshToken ? refreshTokenSessionId(refreshToken) : undefined;
+    if (sid) {
+      await SessionRepository.delete(sid, userId);
+    }
   },
 };

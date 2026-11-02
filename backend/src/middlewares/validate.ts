@@ -8,11 +8,12 @@ type ValidationSource = "body" | "params" | "query";
  * Validates `req[source]` and replaces it with the coerced value (defaults applied, unknown
  * keys stripped). Express 5 exposes `req.query` as a getter that re-parses the URL on every
  * access, so it has to be shadowed with an own property for the validated value to stick.
+ * A request without a body (Express 5 leaves `req.body` undefined) validates as `{}`.
  */
 export const validate =
   (schema: Joi.ObjectSchema, source: ValidationSource = "body") =>
   (req: Request, _res: Response, next: NextFunction): void => {
-    const { error, value } = schema.validate(req[source], {
+    const { error, value } = schema.validate(req[source] ?? {}, {
       abortEarly: false,
       stripUnknown: true,
     });

@@ -20,7 +20,7 @@ export const errorHandler = (
     if (err.statusCode >= 500) {
       logger.error({ err, details: err.details }, "Request failed");
     }
-    sendError(res, err.statusCode, "API_ERROR", err.message, err.details);
+    sendError(res, err.statusCode, err.code, err.message, err.details);
     return;
   }
 

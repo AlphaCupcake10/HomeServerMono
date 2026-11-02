@@ -1,6 +1,11 @@
 # Overrides applied inside the Docker api container (CONFIG_OVERLAY in docker-compose.yml).
 # Only the values that differ from config.yaml belong here.
 
+server:
+  # Requests arrive through the web service's nginx, which overwrites X-Forwarded-For with the
+  # real client IP; trust exactly that one hop so rate limiting is per client.
+  trustProxy: 1
+
 database:
   uri: mongodb://mongo:27017/home_server_mono
 

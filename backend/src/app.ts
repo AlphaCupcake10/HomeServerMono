@@ -2,6 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import compression from "compression";
+import cookieParser from "cookie-parser";
 import hpp from "hpp";
 import { config } from "./config/config";
 import { errorHandler } from "./middlewares/errorHandler";
@@ -29,6 +30,7 @@ app.use(
 );
 app.use(compression());
 app.use(hpp());
+app.use(cookieParser());
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(requestLogger);
