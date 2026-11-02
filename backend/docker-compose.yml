@@ -1,26 +1,21 @@
 services:
   api:
     build: .
+    # Non-secret settings come from config/*.yaml (mounted below; edit + restart, no rebuild).
+    # Only the runtime mode, the Docker overlay and secrets are passed as env.
     environment:
       NODE_ENV: production
-      PORT: 3000
-      MONGODB_URI: mongodb://mongo:27017/home_server_mono
+      CONFIG_OVERLAY: config/config.docker.yaml
       JWT_SECRET: ${JWT_SECRET}
       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
-      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
-      CORS_ORIGINS: http://localhost:3000
-      EXPOSE_ERROR_DETAILS: ${EXPOSE_ERROR_DETAILS:-true}
-      MINECRAFT_CONTAINER_NAME: minecraft-server
-      MINECRAFT_DATA_DIR: /srv/minecraft
-      MINECRAFT_RCON_PORT: 25575
-      MINECRAFT_RCON_HOST: minecraft
       MINECRAFT_RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD}
     ports:
       - "3000:3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../modules/minecraft-server:/srv/minecraft
+      - ./config:/app/config:ro
     depends_on:
       - mongo
 

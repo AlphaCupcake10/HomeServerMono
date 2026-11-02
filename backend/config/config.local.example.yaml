@@ -1,0 +1,10 @@
+# Copy to config.local.yaml (gitignored) for settings specific to this machine.
+# It is applied last, both for `make dev` and inside Docker. Only list what you change.
+
+# server:
+#   corsOrigins:
+#     - http://localhost:3000
+#     - http://192.168.1.50:3000
+#
+# auth:
+#   superAdminEmail: you@example.com

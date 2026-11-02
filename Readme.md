@@ -18,7 +18,12 @@ Or run the API and MongoDB in Docker (the Minecraft server is created but stays 
 make docker-up
 ```
 
-`make setup` generates `backend/.env` with random secrets. Log in as the super admin using `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` from that file; only the super admin can create other users (`POST /api/auth/register`).
+## Configuration
+
+- **Settings** live in [`backend/config/config.yaml`](backend/config/config.yaml) (committed). For changes on one machine only, copy `config.local.example.yaml` to `config.local.yaml` (gitignored) and list just what you change. In Docker, edits apply after restarting the API container; no rebuild needed.
+- **Secrets** live in `backend/.env`, which `make setup` generates with random values.
+
+Log in as the super admin with `auth.superAdminEmail` from the config and `SUPER_ADMIN_PASSWORD` from `.env`. Only the super admin can create other users (`POST /api/auth/register`).
 
 Run `make help` to list all targets.
 

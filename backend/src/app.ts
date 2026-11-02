@@ -3,7 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import compression from "compression";
 import hpp from "hpp";
-import { env } from "./config/env";
+import { config } from "./config/config";
 import { errorHandler } from "./middlewares/errorHandler";
 import { notFoundHandler } from "./middlewares/notFound";
 import { apiLimiter } from "./middlewares/rateLimiter";
@@ -14,8 +14,8 @@ import { swaggerUiMiddleware, swaggerUiSetup } from "./docs/swagger";
 
 const app = express();
 
-// Behind a reverse proxy, set TRUST_PROXY to the number of hops so rate limiting sees real IPs.
-app.set("trust proxy", env.TRUST_PROXY);
+// Behind a reverse proxy, set server.trustProxy to the number of hops so rate limiting sees real IPs.
+app.set("trust proxy", config.server.trustProxy);
 app.use(
   helmet({
     // The default `upgrade-insecure-requests` breaks Swagger UI assets over plain-HTTP LAN access.
@@ -24,9 +24,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: env.CORS_ORIGINS.split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    origin: config.server.corsOrigins,
   }),
 );
 app.use(compression());

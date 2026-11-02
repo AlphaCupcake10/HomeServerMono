@@ -25,9 +25,10 @@ vi.mock("../src/repositories/UserRepository", () => ({
 }));
 
 import app from "../src/app";
+import { config } from "../src/config/config";
 import { signAccessToken } from "../src/utils/tokens";
 
-const propertiesFile = path.join(process.env.MINECRAFT_DATA_DIR!, "server.properties");
+const propertiesFile = path.join(config.minecraft.dataDir, "server.properties");
 const token = signAccessToken({ sub: "1", email: "user@example.com" });
 const auth = { Authorization: `Bearer ${token}` };
 
@@ -191,6 +192,27 @@ describe("minecraft", () => {
       docker.start.mockResolvedValue(undefined);
       const res = await request(app).post("/api/minecraft/start").set(auth);
       expect(res.status).toBe(200);
+    });
+
+    it("re-syncs a stale rcon.password from env before starting", async () => {
+      // beforeEach wrote rcon.password=super-secret; env says MINECRAFT_RCON_PASSWORD=test.
+      fs.appendFileSync(propertiesFile, "motd-extra=keep\n");
+      docker.start.mockResolvedValue(undefined);
+
+      expect((await request(app).post("/api/minecraft/start").set(auth)).status).toBe(200);
+
+      const content = fs.readFileSync(propertiesFile, "utf-8");
+      expect(content).toContain(`rcon.password=${process.env.MINECRAFT_RCON_PASSWORD}`);
+      expect(content).not.toContain("super-secret");
+      expect(content).toContain("motd=Hello");
+      expect(content).toContain("motd-extra=keep");
+    });
+
+    it("still starts when server.properties doesn't exist yet", async () => {
+      fs.rmSync(propertiesFile, { force: true });
+      docker.start.mockResolvedValue(undefined);
+      expect((await request(app).post("/api/minecraft/start").set(auth)).status).toBe(200);
+      expect(fs.existsSync(propertiesFile)).toBe(false);
     });
   });
 });

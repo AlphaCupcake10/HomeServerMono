@@ -1,3 +1,4 @@
+import { config } from "../config/config";
 import { env } from "../config/env";
 
 export class ApiError extends Error {
@@ -22,10 +23,10 @@ export interface ErrorDescription {
 
 /**
  * Describes an underlying error for inclusion in a response, or `undefined` when
- * EXPOSE_ERROR_DETAILS is off. Stack traces are never sent in production.
+ * server.exposeErrorDetails is off. Stack traces are never sent in production.
  */
 export const describeError = (error: unknown): ErrorDescription | undefined => {
-  if (!env.EXPOSE_ERROR_DETAILS) return undefined;
+  if (!config.server.exposeErrorDetails) return undefined;
   if (!(error instanceof Error)) {
     return { name: "NonError", message: String(error) };
   }

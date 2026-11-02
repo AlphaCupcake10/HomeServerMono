@@ -1,0 +1,47 @@
+# Non-secret settings for the API. Secrets (JWT/refresh secrets, super admin password,
+# RCON password) live in backend/.env.
+#
+# Load order (later files override earlier ones; objects merge, arrays/values replace):
+#   1. config/config.yaml          - this file: shared defaults, set up for local `make dev`
+#   2. $CONFIG_OVERLAY             - optional; Docker sets config/config.docker.yaml
+#   3. config/config.local.yaml    - optional, gitignored: per-machine tweaks
+#
+# Unknown keys are rejected at startup, so typos fail loudly.
+
+server:
+  port: 3000
+  # Browser origins allowed to call the API.
+  corsOrigins:
+    - http://localhost:3000
+  # Number of reverse-proxy hops in front of the API (0 = none). Affects client IPs for rate limiting.
+  trustProxy: 0
+  # Include the underlying error (name, message, code) in 500/502/503 responses.
+  # Handy on a private network; set to false if the API is exposed publicly.
+  exposeErrorDetails: true
+
+database:
+  uri: mongodb://localhost:27017/home_server_mono
+
+auth:
+  accessTokenTtl: 15m
+  refreshTokenTtl: 7d
+  # Created/synced on every startup (password comes from SUPER_ADMIN_PASSWORD in .env).
+  # Only this account can create users.
+  superAdminEmail: admin@example.com
+
+rateLimit:
+  windowMs: 900000
+  max: 100
+  # Max failed login/refresh attempts per window.
+  authMax: 10
+
+log:
+  level: info
+
+minecraft:
+  containerName: minecraft-server
+  # Folder holding server.properties. Relative paths resolve against backend/.
+  dataDir: ../modules/minecraft-server
+  rcon:
+    host: 127.0.0.1
+    port: 25575

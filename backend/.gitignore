@@ -4,5 +4,6 @@ coverage/
 .env
 .env.*
 !.env.example
+config/config.local.yaml
 *.log
 .DS_Store

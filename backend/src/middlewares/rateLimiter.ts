@@ -1,17 +1,17 @@
 import rateLimit from "express-rate-limit";
-import { env } from "../config/env";
+import { config } from "../config/config";
 
 export const apiLimiter = rateLimit({
-  windowMs: env.RATE_LIMIT_WINDOW_MS,
-  limit: env.RATE_LIMIT_MAX,
+  windowMs: config.rateLimit.windowMs,
+  limit: config.rateLimit.max,
   standardHeaders: "draft-7",
   legacyHeaders: false,
 });
 
 // Stricter limit for credential endpoints (login / refresh) to slow brute-force attempts.
 export const authLimiter = rateLimit({
-  windowMs: env.RATE_LIMIT_WINDOW_MS,
-  limit: env.AUTH_RATE_LIMIT_MAX,
+  windowMs: config.rateLimit.windowMs,
+  limit: config.rateLimit.authMax,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   skipSuccessfulRequests: true,

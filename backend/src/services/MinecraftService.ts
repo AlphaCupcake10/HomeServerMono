@@ -3,6 +3,8 @@ import path from "path";
 import docker from "../utils/docker";
 import { sendRconCommand } from "../utils/rcon";
 import { ApiError, describeError } from "../utils/errors";
+import { logger } from "../utils/logger";
+import { config } from "../config/config";
 import { env } from "../config/env";
 
 const STOP_TIMEOUT_SECONDS = 30;
@@ -12,7 +14,7 @@ const HIDDEN_PROPERTIES = new Set(["rcon.password"]);
 /** Cannot be changed through the API: editing these would lock the API out of RCON. */
 const PROTECTED_PROPERTIES = new Set(["rcon.password", "rcon.port", "enable-rcon"]);
 
-const propertiesPath = (): string => path.join(env.MINECRAFT_DATA_DIR, "server.properties");
+const propertiesPath = (): string => path.join(config.minecraft.dataDir, "server.properties");
 
 /** Serialises read-modify-write cycles on server.properties within this process. */
 let propertiesLock: Promise<unknown> = Promise.resolve();
@@ -29,7 +31,7 @@ const toApiError = (error: unknown, alreadyMessage: string): unknown => {
   if (statusCode === 404) {
     return new ApiError(
       404,
-      `Container "${env.MINECRAFT_CONTAINER_NAME}" does not exist; create it with "make minecraft-create"`,
+      `Container "${config.minecraft.containerName}" does not exist; create it with "make minecraft-create"`,
       describeError(error),
     );
   }
@@ -57,26 +59,89 @@ const parseDockerLogs = (buffer: Buffer): string => {
   return output;
 };
 
+/**
+ * Applies `properties` to server.properties content: existing keys are updated in place
+ * (comments and layout preserved) and unknown keys are appended.
+ */
+const mergeProperties = (content: string, properties: Record<string, string>): string => {
+  const updatedKeys = new Set<string>();
+
+  const lines = content.split(/\r?\n/).map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return line;
+
+    const eq = line.indexOf("=");
+    if (eq === -1) return line;
+
+    const key = line.slice(0, eq).trim();
+    if (Object.hasOwn(properties, key)) {
+      updatedKeys.add(key);
+      return `${key}=${properties[key]}`;
+    }
+    return line;
+  });
+
+  // Drop the empty tail left by the trailing newline so the file doesn't grow per update.
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+
+  for (const [key, value] of Object.entries(properties)) {
+    if (!updatedKeys.has(key)) {
+      lines.push(`${key}=${value}`);
+    }
+  }
+
+  return lines.join("\n") + "\n";
+};
+
+/**
+ * The itzg image only generates server.properties once (OVERRIDE_SERVER_PROPERTIES=false), so a
+ * later change to MINECRAFT_RCON_PASSWORD leaves the file stale. The image's own rcon-cli (used
+ * for graceful shutdown) and this API then fail to authenticate, and `docker stop` ends in a
+ * SIGKILL. Re-assert the RCON settings before every start. Best effort: never blocks start.
+ */
+const syncRconProperties = (): Promise<void> =>
+  withPropertiesLock(async () => {
+    try {
+      const filePath = propertiesPath();
+      const content = await fs.readFile(filePath, "utf-8");
+      const merged = mergeProperties(content, {
+        "enable-rcon": "true",
+        "rcon.password": env.MINECRAFT_RCON_PASSWORD,
+      });
+      if (merged !== content) {
+        await fs.writeFile(filePath, merged, "utf-8");
+        logger.info("Synced RCON settings from environment into server.properties");
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        logger.warn({ err: error }, "Could not sync RCON settings into server.properties");
+      }
+    }
+  });
+
 export const MinecraftService = {
   async start(): Promise<{ container: string }> {
+    await syncRconProperties();
     try {
-      await docker.getContainer(env.MINECRAFT_CONTAINER_NAME).start();
+      await docker.getContainer(config.minecraft.containerName).start();
     } catch (error) {
       throw toApiError(error, "Minecraft server is already running");
     }
-    return { container: env.MINECRAFT_CONTAINER_NAME };
+    return { container: config.minecraft.containerName };
   },
   async stop(): Promise<{ container: string }> {
     try {
-      await docker.getContainer(env.MINECRAFT_CONTAINER_NAME).stop({ t: STOP_TIMEOUT_SECONDS });
+      await docker.getContainer(config.minecraft.containerName).stop({ t: STOP_TIMEOUT_SECONDS });
     } catch (error) {
       throw toApiError(error, "Minecraft server is already stopped");
     }
-    return { container: env.MINECRAFT_CONTAINER_NAME };
+    return { container: config.minecraft.containerName };
   },
   async getLogs(tail: number): Promise<string> {
     try {
-      const container = docker.getContainer(env.MINECRAFT_CONTAINER_NAME);
+      const container = docker.getContainer(config.minecraft.containerName);
       const info = await container.inspect();
       const buffer = (await container.logs({
         stdout: true,
@@ -94,8 +159,8 @@ export const MinecraftService = {
     try {
       return await sendRconCommand(
         {
-          host: env.MINECRAFT_RCON_HOST,
-          port: env.MINECRAFT_RCON_PORT,
+          host: config.minecraft.rcon.host,
+          port: config.minecraft.rcon.port,
           password: env.MINECRAFT_RCON_PASSWORD,
         },
         command,
@@ -128,38 +193,8 @@ export const MinecraftService = {
         }
         throw error;
       }
-      const updatedKeys = new Set<string>();
-
-      // Update existing properties in place, preserving comments and layout.
-      const newLines = content.split(/\r?\n/).map((line) => {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) return line;
-
-        const eq = line.indexOf("=");
-        if (eq === -1) return line;
-
-        const key = line.slice(0, eq).trim();
-        if (Object.hasOwn(properties, key)) {
-          updatedKeys.add(key);
-          return `${key}=${properties[key]}`;
-        }
-        return line;
-      });
-
-      // Drop the empty tail left by the trailing newline so the file doesn't grow per update.
-      while (newLines.length > 0 && newLines[newLines.length - 1] === "") {
-        newLines.pop();
-      }
-
-      // Append properties that weren't in the file yet.
-      for (const [key, value] of Object.entries(properties)) {
-        if (!updatedKeys.has(key)) {
-          newLines.push(`${key}=${value}`);
-        }
-      }
-
       // The server only reads server.properties on startup; changes apply after a restart.
-      await fs.writeFile(filePath, newLines.join("\n") + "\n", "utf-8");
+      await fs.writeFile(filePath, mergeProperties(content, properties), "utf-8");
       return { updated: true };
     });
   },

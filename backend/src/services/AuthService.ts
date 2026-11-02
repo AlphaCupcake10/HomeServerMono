@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import { config } from "../config/config";
 import { env } from "../config/env";
 import { ApiError } from "../utils/errors";
 import { logger } from "../utils/logger";
@@ -32,11 +33,11 @@ const issueTokens = async (user: { _id: unknown; email: string }) => {
 
 export const AuthService = {
   /**
-   * Creates or syncs the super admin from SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD.
-   * Called on startup; changing the env values and restarting updates the account.
+   * Creates or syncs the super admin from auth.superAdminEmail (config) and SUPER_ADMIN_PASSWORD
+   * (env). Called on startup; changing either and restarting updates the account.
    */
   async ensureSuperAdmin(): Promise<void> {
-    const email = env.SUPER_ADMIN_EMAIL.trim().toLowerCase();
+    const email = config.auth.superAdminEmail.trim().toLowerCase();
     const existing = await UserRepository.findByEmail(email);
     if (!existing) {
       const password = await bcrypt.hash(env.SUPER_ADMIN_PASSWORD, SALT_ROUNDS);

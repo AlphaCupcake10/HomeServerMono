@@ -12,5 +12,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
+# Defaults baked in; docker-compose.yml bind-mounts ./config over this so edits need no rebuild.
+COPY config ./config
 EXPOSE 3000
 CMD ["node", "dist/index.js"]

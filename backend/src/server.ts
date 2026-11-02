@@ -1,9 +1,9 @@
 import type { Server } from "node:http";
-import { env } from "./config/env";
+import { config } from "./config/config";
 import { logger } from "./utils/logger";
 import app from "./app";
 
-const port = Number(env.PORT ?? 3000);
+const port = config.server.port;
 
 export const startServer = (): Server => {
   const server = app.listen(port, () => logger.info({ port }, "Server started"));
